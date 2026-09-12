@@ -1,147 +1,177 @@
-# Network Event Threat Triage
+# JARVIS-IDS
 
-A Python-based network security analysis pipeline that transforms raw network events into behavioral risk scores, heuristic attack classifications, explanations, and machine-learning features.
+## Intelligent Network Intrusion Detection System
 
-The project explores how simple flow-like network data can be transformed into information that is more useful for a defender: **What looks suspicious? What attack pattern might it represent? And why?**
+JARVIS-IDS is a Python-based network intrusion detection project that analyzes network traffic, extracts behavioral features, identifies suspicious activity, classifies potential attack patterns, and provides human-readable explanations for detected threats.
 
-This is an **active prototype**, not a finished intrusion detection system. The current implementation focuses on building and testing the detection pipeline and establishing a baseline for future machine-learning development.
+The project explores how network events can be transformed into meaningful security information:
+
+**What looks suspicious? What type of attack might it represent? And why was it flagged?**
+
+JARVIS-IDS is currently an **active prototype** focused on developing and evaluating a behavior-based intrusion detection pipeline and establishing a foundation for future machine-learning development.
 
 ---
 
 ## Problem
 
-Raw network connection logs are difficult to analyze manually. A single dataset can contain normal traffic alongside port scans, network scans, brute-force attempts, beacon-like communication, and large outbound transfers.
+Raw network traffic contains large amounts of activity that can be difficult to analyze manually. Normal connections can exist alongside behaviors associated with port scanning, network scanning, brute-force attempts, beaconing, and data exfiltration.
 
-The goal of this project is to build a pipeline that can:
+JARVIS-IDS aims to automate part of this analysis by:
 
-* Detect unusual source-host behavior
-* Aggregate network activity by source IP
-* Generate behavioral features from network events
-* Assign a working attack classification
-* Explain why an event or host was considered suspicious
-* Use the resulting features as input for machine-learning models
+* Detecting unusual network behavior
+* Aggregating activity by source IP
+* Extracting behavioral network features
+* Identifying potential attack patterns
+* Assigning working threat classifications
+* Explaining why activity was classified as suspicious
+* Using engineered features for machine-learning experiments
 
 ---
 
-## Current Pipeline
+## Detection Pipeline
 
-The project currently processes `network_events.csv`, containing approximately 1,000 network events with the following fields:
+The current implementation processes `network_events.csv`, which contains approximately 1,000 network events with the following fields:
 
 * `src_ip`
 * `dst_ip`
 * `port`
 * `bytes`
 
-The current dataset does **not** contain timestamps, protocol information, payload data, or analyst-verified ground-truth labels. These limitations are important when interpreting the current detection results.
+The current dataset does not contain timestamps, protocol information, payload data, or independently verified ground-truth labels. These limitations are important when interpreting the current results.
 
-The pipeline consists of three main stages.
+### 1. Suspicious Behavior Detection
 
-### 1. Behavioral Suspicion Scoring
+The system analyzes network activity using behavioral indicators such as:
 
-Network events are analyzed using behavioral indicators derived from source and destination activity.
+* Number of unique ports contacted by a source IP
+* Number of unique destination IPs contacted
+* Total bytes sent by a source
+* Number of destinations contacted through the same port
 
-Examples include:
+These indicators are converted into suspicion flags and combined into a behavioral suspicion score.
 
-* A source contacting many different ports
-* A source contacting many different destination IPs
-* High total traffic volume from a source
-* A source/port pair contacting many destinations
-* A destination receiving connections from many different sources
-
-These indicators are converted into boolean suspicion flags and combined into a `suspicious_score`.
-
-The score is then mapped to a working risk level:
+The resulting score is mapped to a working risk level:
 
 `normal → low → medium → high → critical`
 
-This layer is intended as an initial triage mechanism rather than a definitive security verdict.
+This layer is designed as a **threat-triage mechanism**, rather than a definitive security verdict.
 
-### 2. Behavioral Features and Attack Classification
+### 2. Behavioral Feature Engineering
 
-Network events are aggregated by `src_ip` to create behavioral features such as:
+JARVIS-IDS aggregates network activity by `src_ip` and generates behavioral features including:
 
 * Event frequency
 * Total bytes
 * Average bytes per event
 * Maximum bytes per event
-* Number of unique destination IPs
-* Number of unique ports
+* Destination diversity
+* Port diversity
 
-These features are then used by heuristic rules to assign a working `attack_type`.
+These features describe the behavior of each source and provide structured input for subsequent classification.
 
-| Attack Type         | Detection Concept                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| `port_scan`         | Many ports contacted across relatively few destinations with small traffic volumes |
-| `network_scan`      | Many destination IPs contacted with relatively few ports and repeated activity     |
-| `brute_force`       | Repeated connections toward the same destination and port                          |
-| `beaconing`         | Repeated small connections toward the same destination and port                    |
-| `data_exfiltration` | Large transfers with high total traffic and limited destination spread             |
-| `normal`            | Activity that does not satisfy the current detection rules                         |
+### 3. Attack Classification
 
-The system also generates a `reasons` field containing human-readable explanations for non-normal classifications.
+Heuristic detection rules are used to assign a working `attack_type` to network activity.
+
+The current classifications include:
+
+| Attack Type         | Detection Concept                                              |
+| ------------------- | -------------------------------------------------------------- |
+| `port_scan`         | Many unique ports contacted by the same source                 |
+| `network_scan`      | Many unique destination IPs contacted                          |
+| `brute_force`       | Repeated attempts toward a destination                         |
+| `beaconing`         | Repeated small connections to the same destination and port    |
+| `data_exfiltration` | Extremely large data transfers and high total outbound traffic |
+| `normal`            | Activity that does not satisfy the current attack rules        |
+
+The system also generates human-readable detection reasons.
 
 For example:
 
 > Many unique ports contacted by the same source IP
 
-This makes the output more interpretable than simply returning an attack label.
+This provides context behind a classification instead of returning only an attack label.
 
-### 3. XGBoost Baseline
+---
 
-The engineered behavioral features are used as input to an `XGBClassifier`.
+## Machine Learning
 
-The current experiment uses:
+The engineered behavioral features are used in an **XGBoost classification experiment**.
 
+The current experiment includes:
+
+* `XGBClassifier`
 * 80/20 stratified train/test split
-* Per-source behavioral features
 * Classification report
 * Confusion matrix
 * Feature importance analysis
 
-The machine-learning stage is currently **exploratory**.
+The machine-learning component is currently **experimental**.
 
-The present labels are generated from heuristic rules that are based on the same behavioral features provided to the model. As a result, a high classification score does **not** demonstrate that the model can independently detect previously unseen attacks.
+The current attack labels are generated using heuristic rules based on behavioral characteristics. Because those same behavioral characteristics are also provided to the machine-learning model, a high classification score does not demonstrate independent real-world intrusion detection capability.
 
-In addition, multiple events from the same source IP can appear across both training and testing data, meaning the current split does not represent a strict separation between known and unseen hosts.
+Additionally, multiple events from the same source IP may appear in both the training and testing sets. This means the current evaluation does not provide strict separation between previously observed and unseen hosts.
 
-The ML results should therefore be interpreted as a **baseline for future experimentation**, rather than as evidence of real-world detection performance.
+The current ML results should therefore be interpreted as a **baseline experiment**, not as production-level IDS performance.
 
 ---
 
 ## Current Results
 
-On the current dataset, most events remain classified as `normal`.
+The current dataset is predominantly classified as `normal`.
 
-The existing rules primarily identify:
+The implemented detection logic identifies behavior associated with:
 
-* Data-exfiltration-like behavior
-* Beaconing-like behavior
-* Brute-force-like behavior
-* A smaller number of port-scan events
+* Data-exfiltration-like activity
+* Beaconing-like activity
+* Brute-force-like activity
+* Port scanning
 
-The `network_scan` logic has been implemented but does not currently match the available dataset consistently. This is an area for further rule development and dataset expansion.
+The `network_scan` detection logic is implemented but does not consistently match the current dataset. Improving this detection logic and expanding the dataset are planned areas of development.
 
 ---
 
-## Important Limitations
+## Explainability
 
-The current dataset limits what can be inferred from the network events.
+One of the goals of JARVIS-IDS is to make detections easier to understand.
+
+Instead of returning only:
+
+`attack_type = port_scan`
+
+the system can provide an explanation such as:
+
+`Many unique ports contacted by the same source IP`
+
+This approach makes the detection pipeline more useful for **security analysis and threat triage**, where understanding the reason behind an alert is important.
+
+---
+
+## Limitations
 
 ### No timestamps
 
-Without timestamps, the system cannot establish whether connections occur at regular intervals. Therefore, the current `beaconing` classification is only a behavioral approximation based on repeated small connections to the same destination and port.
+The current dataset does not contain timestamps. As a result, the system cannot determine whether connections occur at regular time intervals.
 
-### No ground-truth labels
+The current `beaconing` classification is therefore a behavioral approximation based on repeated small connections to the same destination and port.
 
-The current attack labels are heuristic labels rather than analyst-verified ground truth.
+### No independently verified ground truth
 
-### Small and synthetic dataset
+The current attack classifications are generated by heuristic rules rather than analyst-verified labels.
 
-The dataset is small, synthetic, and simplified compared with real network telemetry. The current results should therefore not be interpreted as production-level IDS performance.
+### Synthetic dataset
+
+The dataset is small and synthetic compared with real-world network telemetry.
+
+The current results should therefore not be interpreted as production-level intrusion detection performance.
 
 ### Potential data leakage
 
-Because features and heuristic labels are generated from the same source behavior, the current ML experiment can learn the rules that generated the labels. Evaluation must eventually use independent labels and source-level train/test separation.
+The current ML experiment uses features derived from the same behavioral information used to generate the heuristic labels.
+
+This means the model can effectively learn the rules that generated the labels.
+
+Future evaluation should use independently generated labels and source-level separation between training and testing data.
 
 ---
 
@@ -151,29 +181,29 @@ Planned improvements include:
 
 * Add timestamps for temporal and session-based analysis
 * Improve beaconing detection using connection intervals
-* Tune and validate the `network_scan` detection logic
-* Tighten and validate suspicion thresholds
-* Separate heuristic labels from independently generated ML labels
+* Improve and validate network-scan detection
+* Tune and validate detection thresholds
+* Expand the network feature set
+* Introduce independently generated or verified labels
 * Split training and testing data by source host
-* Evaluate against a larger and more realistic dataset
-* Add additional network features
+* Evaluate against larger and more realistic network datasets
 * Compare multiple machine-learning models
-* Move stable detection logic from the notebook into reusable Python modules
-* Build a dashboard for interactive threat triage and visualization
+* Move stable detection logic into reusable Python modules
+* Develop an interactive dashboard for threat triage and visualization
 
 ---
 
 ## Project Structure
 
 ```text
-Network-Event-Threat-Triage/
-├── current.ipynb
+JARVIS-IDS/
+├── JARVIS-IDS.ipynb
 ├── network_events.csv
 ├── requirements.txt
 └── README.md
 ```
 
-The primary artifact is currently `current.ipynb`.
+The primary artifact is currently `JARVIS-IDS.ipynb`.
 
 ---
 
@@ -185,10 +215,10 @@ Install the required dependencies:
 python -m pip install -r requirements.txt
 ```
 
-Start Jupyter:
+Launch the notebook:
 
 ```bash
-jupyter notebook current.ipynb
+jupyter notebook JARVIS-IDS.ipynb
 ```
 
 Run the notebook from the beginning.
@@ -203,15 +233,17 @@ The notebook expects `network_events.csv` to be located in the same directory.
 * Pandas
 * Scikit-learn
 * XGBoost
-* Jupyter Notebook
 * Matplotlib
+* Jupyter Notebook
 
 ---
 
 ## Project Status
 
-**Status: Active development**
+**Status: Active Development**
 
-The current version establishes the initial behavioral detection pipeline and an XGBoost baseline. The next stage is improving the dataset, validation methodology, temporal analysis, and separation between heuristic detection and machine-learning evaluation.
+JARVIS-IDS currently establishes a behavior-based network threat detection pipeline, explainable attack classification, engineered behavioral features, and an XGBoost baseline.
 
-The project focuses on **behavior-based network threat detection, explainable security analytics, and establishing a reliable foundation for future machine-learning-based intrusion detection**.
+The next stage focuses on improving the dataset, validation methodology, temporal analysis, and separation between heuristic detection and machine-learning evaluation.
+
+The long-term goal is to develop JARVIS-IDS into a more robust **behavior-based network intrusion detection and threat-triage system** capable of combining explainable detection logic with machine-learning techniques.
